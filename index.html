@@ -122,36 +122,19 @@
             height: 100%;
             pointer-events: none;
             z-index: 999;
-            background:
-                repeating-linear-gradient(
-                    0deg,
-                    rgba(0, 255, 255, 0.08) 0px,
-                    rgba(0, 255, 255, 0.08) 1px,
-                    transparent 1px,
-                    transparent 2px
-                ),
-                repeating-linear-gradient(
-                    0deg,
-                    rgba(0, 255, 150, 0.04) 0px,
-                    rgba(0, 255, 150, 0.04) 2px,
-                    transparent 2px,
-                    transparent 4px
-                );
-            animation: scan 8s linear infinite;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 255, 255, 0.03) 0px,
+                rgba(0, 255, 255, 0.03) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+            animation: scan 10s linear infinite;
         }
 
         @keyframes scan {
-            0% {
-                transform: translateY(0);
-                opacity: 1;
-            }
-            50% {
-                opacity: 0.85;
-            }
-            100% {
-                transform: translateY(20px);
-                opacity: 1;
-            }
+            0% { transform: translateY(0); }
+            100% { transform: translateY(20px); }
         }
     </style>
 </head>
