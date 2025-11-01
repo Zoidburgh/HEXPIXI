@@ -32,7 +32,9 @@
       "Bash(start http://localhost:5173)",
       "Bash(npm install:*)",
       "Bash(mkdir:*)",
-      "Bash(start http://localhost:5174)"
+      "Bash(start http://localhost:5174)",
+      "Bash(curl:*)",
+      "Bash(start http://localhost:8001/puzzle_editor.html)"
     ],
     "deny": [],
     "ask": []
