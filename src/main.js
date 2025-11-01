@@ -963,30 +963,134 @@ const tileInventoryManager = {
         });
     },
 
-    removeTile(player, value) {
+    vaporizeAndShrink(selectedTile) {
+        const { player, value, segment } = selectedTile;
+        const glowColor = player === 1 ? COLORS.glow.player1 : COLORS.glow.player2;
+        const color = player === 1 ? COLORS.tile.player1 : COLORS.tile.player2;
+
+        // Find the tile data to get its angle and radius
         const tiles = player === 1 ? this.player1Tiles : this.player2Tiles;
-        const tileIndex = tiles.findIndex(t => t.value === value);
-        if (tileIndex === -1) return;
+        const tileData = tiles.find(t => t.segment === segment);
 
-        // Remove and rebuild entire bar with smooth animation
-        const newTileValues = tiles.filter((_, i) => i !== tileIndex).map(t => t.value);
+        if (!tileData) {
+            console.error('Could not find tile data for vaporize animation');
+            this.removeTile(player, value);
+            return;
+        }
 
-        // Fade out old bar
+        // Calculate the segment's center position on the arc
         const bar = player === 1 ? this.player1Bar : this.player2Bar;
-        gsap.to(bar, {
-            alpha: 0,
-            duration: 0.2,
-            onComplete: () => {
-                // Rebuild with remaining tiles
-                this.displayTiles(player, newTileValues);
+        const arcRadius = (tileData.innerRadius + tileData.outerRadius) / 2;
+        const localX = arcRadius * Math.cos(tileData.angle);
+        const localY = arcRadius * Math.sin(tileData.angle);
+        const globalPos = bar.toGlobal(new PIXI.Point(localX, localY));
 
-                // Fade in new bar
-                const newBar = player === 1 ? this.player1Bar : this.player2Bar;
-                newBar.alpha = 0;
-                gsap.to(newBar, { alpha: 1, duration: 0.3 });
+        // Cyberpunk vaporize effect - segment dissolves with digital glitch
+        // Flash bright then fade out
+        segment.alpha = 1;
+        gsap.to(segment, {
+            alpha: 1.5,
+            duration: 0.05,
+            ease: 'power2.out',
+            onComplete: () => {
+                gsap.to(segment, {
+                    alpha: 0,
+                    duration: 0.2,
+                    ease: 'power2.in'
+                });
             }
         });
 
+        // Digital particle explosion - mix of shapes and sizes
+        const particleCount = 35;
+        for (let i = 0; i < particleCount; i++) {
+            const particle = new PIXI.Graphics();
+
+            // Mix of squares and circles for digital/glitch feel
+            const isSquare = Math.random() > 0.6;
+            const size = 2 + Math.random() * 4;
+
+            particle.beginFill(glowColor, 0.95);
+            if (isSquare) {
+                particle.drawRect(-size/2, -size/2, size, size);
+            } else {
+                particle.drawCircle(0, 0, size);
+            }
+            particle.endFill();
+
+            // Add glow to particles
+            const particleGlow = new GlowFilter({
+                distance: 6,
+                outerStrength: 2,
+                innerStrength: 0.5,
+                color: glowColor,
+                quality: 0.3
+            });
+            particle.filters = [particleGlow];
+
+            particle.x = globalPos.x;
+            particle.y = globalPos.y;
+            app.stage.addChild(particle);
+
+            // Random burst direction with some variance
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 60 + Math.random() * 100;
+            const targetX = particle.x + Math.cos(angle) * speed;
+            const targetY = particle.y + Math.sin(angle) * speed;
+
+            // Some particles fade faster (layered effect)
+            const duration = 0.3 + Math.random() * 0.25;
+
+            // Animate particle burst with slight rotation for energy feel
+            gsap.to(particle, {
+                x: targetX,
+                y: targetY,
+                alpha: 0,
+                rotation: (Math.random() - 0.5) * Math.PI,
+                duration: duration,
+                ease: 'power2.out',
+                onComplete: () => {
+                    app.stage.removeChild(particle);
+                    particle.destroy();
+                }
+            });
+
+            // Slight scale animation for more life
+            gsap.to(particle.scale, {
+                x: 0.3,
+                y: 0.3,
+                duration: duration,
+                ease: 'power1.in'
+            });
+        }
+
+        // Immediately start closing the gap (no delay)
+        this.smoothCloseGap(player, selectedTile);
+    },
+
+    smoothCloseGap(player, selectedTile) {
+        const tiles = player === 1 ? this.player1Tiles : this.player2Tiles;
+
+        // Find the SPECIFIC tile instance that was selected (not just by value)
+        const tileIndex = tiles.findIndex(t => t.segment === selectedTile.segment);
+
+        if (tileIndex === -1) {
+            console.error('Could not find tile to remove');
+            return;
+        }
+
+        // Get the values of remaining tiles (remove only this specific instance)
+        const newTileValues = tiles.filter((_, i) => i !== tileIndex).map(t => t.value);
+
+        // Instant rebuild - no fade, just rebuild immediately
+        this.displayTiles(player, newTileValues);
+    },
+
+    removeTile(player, value) {
+        // This is a fallback if vaporizeAndShrink isn't called
+        const tiles = player === 1 ? this.player1Tiles : this.player2Tiles;
+        const newTileValues = tiles.filter(t => t.value !== value).map(t => t.value);
+        this.displayTiles(player, newTileValues);
         console.log(`🗑️ Removed tile ${value} from Player ${player}`);
     },
 
@@ -1581,7 +1685,7 @@ function onHexClick(hex, index) {
         gameState.wasmEngine.makeMove(hexId, selectedTile.value);
     }
 
-    // Player-colored ripple ring on placement
+    // INSTANT FEEDBACK: Player-colored ripple ring on placement
     const ringColor = gameState.currentPlayer === 1 ? COLORS.glow.player1 : COLORS.glow.player2;
     const ring = new PIXI.Graphics();
     ring.lineStyle(3, ringColor, 1);
@@ -1607,11 +1711,11 @@ function onHexClick(hex, index) {
         }
     });
 
-    // Place tile with the selected value
+    // Place tile with the selected value (instant)
     placeTile(hexId, index, gameState.currentPlayer, selectedTile.value);
 
-    // Remove tile from inventory
-    tileInventoryManager.removeTile(selectedTile.player, selectedTile.value);
+    // SIMULTANEOUSLY: Vaporize tile from player box with particles and smooth shrink
+    tileInventoryManager.vaporizeAndShrink(selectedTile);
 
     // Deselect tile
     tileInventoryManager.deselectTile();
@@ -1792,6 +1896,14 @@ async function init() {
     // Hide loading screen
     const loadingElement = document.getElementById('loading');
     const uiOverlay = document.getElementById('ui-overlay');
+
+    // Wait for fonts to load
+    try {
+        await document.fonts.load('700 62px Saira');
+        console.log('✓ Fonts loaded');
+    } catch (e) {
+        console.warn('⚠️ Font loading timeout, continuing anyway');
+    }
 
     // Create board
     createBoard();
