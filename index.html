@@ -7,7 +7,7 @@
     <!-- Google Fonts for cyberpunk options -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Barlow:wght@500;600;700&family=DM+Sans:wght@500;700&family=Chakra+Petch:wght@500;600;700&family=Saira:wght@500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Barlow:wght@500;600;700&family=DM+Sans:wght@500;700&family=Chakra+Petch:wght@500;600;700&family=Saira:wght@500;600;700&display=swap" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -121,7 +121,7 @@
         .player1-score { color: #ff006e; }  /* Hot magenta */
         .player2-score { color: #0d47a1; }  /* Dark cyberpunk blue */
 
-        /* CYBERPUNK SCAN LINES - The CRT effect! */
+        /* CYBERPUNK SCAN LINES - Dual-layer grid mesh! */
         .scanlines {
             position: fixed;
             top: 0;
@@ -130,13 +130,23 @@
             height: 100%;
             pointer-events: none;
             z-index: 999;
-            background: repeating-linear-gradient(
-                0deg,
-                rgba(0, 255, 255, 0.03) 0px,
-                rgba(0, 255, 255, 0.03) 1px,
-                transparent 1px,
-                transparent 2px
-            );
+            background:
+                /* Horizontal lines */
+                repeating-linear-gradient(
+                    0deg,
+                    rgba(0, 255, 255, 0.04) 0px,
+                    rgba(0, 255, 255, 0.04) 1px,
+                    transparent 1px,
+                    transparent 2px
+                ),
+                /* Vertical lines - more subtle */
+                repeating-linear-gradient(
+                    90deg,
+                    rgba(0, 255, 255, 0.02) 0px,
+                    rgba(0, 255, 255, 0.02) 1px,
+                    transparent 1px,
+                    transparent 4px
+                );
             animation: scan 10s linear infinite;
         }
 
