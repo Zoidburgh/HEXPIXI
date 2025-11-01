@@ -132,6 +132,129 @@ const particleManager = {
 // HEX RENDERING
 // ============================================================================
 
+// Helper: Create RGB split effect for glitch animation
+function createRGBSplitEffect(x, y, size) {
+    const splits = [];
+    const colors = [0xff0000, 0x00ff00, 0x0000ff]; // Red, Green, Blue
+    const offsets = [
+        { x: -3, y: -2 },
+        { x: 2, y: 3 },
+        { x: -2, y: 2 }
+    ];
+
+    colors.forEach((color, i) => {
+        const split = new PIXI.Graphics();
+        split.lineStyle(2, color, 0.5);
+        split.beginFill(color, 0.15);
+
+        for (let j = 0; j < 6; j++) {
+            const angle = (Math.PI / 3) * j;
+            const px = size * Math.cos(angle);
+            const py = size * Math.sin(angle);
+
+            if (j === 0) {
+                split.moveTo(px, py);
+            } else {
+                split.lineTo(px, py);
+            }
+        }
+
+        split.closePath();
+        split.endFill();
+        split.x = x + offsets[i].x;
+        split.y = y + offsets[i].y;
+        split.alpha = 0;
+
+        splits.push(split);
+    });
+
+    return splits;
+}
+
+// Helper: Create static noise effect
+function createStaticNoise(x, y, size) {
+    const noise = new PIXI.Graphics();
+
+    // Random white lines and dots
+    for (let i = 0; i < 15; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * size * 0.8;
+        const x1 = Math.cos(angle) * dist;
+        const y1 = Math.sin(angle) * dist;
+        const x2 = x1 + (Math.random() - 0.5) * 20;
+        const y2 = y1 + (Math.random() - 0.5) * 20;
+
+        noise.lineStyle(Math.random() * 2 + 0.5, 0xffffff, Math.random() * 0.8);
+        noise.moveTo(x1, y1);
+        noise.lineTo(x2, y2);
+    }
+
+    noise.x = x;
+    noise.y = y;
+    noise.alpha = 0;
+
+    return noise;
+}
+
+// Animate hex appearance with glitch effect
+function animateHexAppearance(hex, pos, delay) {
+    // Start hidden
+    hex.alpha = 0;
+    hex.scale.set(0.8);
+
+    // Phase 1: RGB Split Pre-Glitch
+    const rgbSplits = createRGBSplitEffect(pos.x, pos.y, HEX_SIZE);
+    rgbSplits.forEach(split => boardContainer.addChild(split));
+
+    gsap.to(rgbSplits, {
+        alpha: 0.6,
+        duration: 0.1,
+        delay: delay,
+        stagger: 0.02,
+        ease: 'power2.in'
+    });
+
+    // Phase 2: Solidify - hex fades in
+    gsap.to(hex, {
+        alpha: 1,
+        duration: 0.2,
+        delay: delay + 0.15,
+        ease: 'power2.out'
+    });
+
+    gsap.to(hex.scale, {
+        x: 1.05,
+        y: 1.05,
+        duration: 0.15,
+        delay: delay + 0.15,
+        ease: 'back.out(2)',
+        onComplete: () => {
+            gsap.to(hex.scale, {
+                x: 1,
+                y: 1,
+                duration: 0.1,
+                ease: 'power2.inOut'
+            });
+        }
+    });
+
+    // Cleanup RGB splits
+    gsap.to(rgbSplits, {
+        alpha: 0,
+        x: pos.x,
+        y: pos.y,
+        duration: 0.15,
+        delay: delay + 0.15,
+        ease: 'power2.in',
+        onComplete: () => {
+            rgbSplits.forEach(split => {
+                boardContainer.removeChild(split);
+                split.destroy();
+            });
+        }
+    });
+}
+
 function createHexagon(x, y, size, color, strokeColor) {
     const hex = new PIXI.Graphics();
 
@@ -195,28 +318,34 @@ function createBoard() {
         // Add tile number text
         const text = new PIXI.Text('', {
             fontFamily: 'Space Grotesk, monospace',
-            fontSize: 63.18,
+            fontSize: 72.657,
             fontWeight: '700',
             fill: 0xffffff,
             align: 'center'
         });
-        text.anchor.set(0.5);
+        text.anchor.set(0.5, 0.5); // Center both horizontally and vertically
         text.x = pos.x;
-        text.y = pos.y;
+        text.y = pos.y + 2; // Slight downward adjustment for better centering
         text.visible = false;
 
         boardContainer.addChild(text);
         tileTexts[index] = text;
 
-        // Show immediately - no animation
-        hex.alpha = 1;
-        hex.scale.set(1);
+        // Calculate delay based on distance from center (hex 9)
+        const centerPos = HEX_POSITIONS[9]; // Center hex
+        const dx = pos.x - centerPos.x;
+        const dy = pos.y - centerPos.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const delay = (distance / 100) * 0.08; // ~50-80ms per "ring"
+
+        // Trigger glitch animation
+        animateHexAppearance(hex, pos, delay);
     });
 
     // Scanning effects disabled for performance
     // startScanningEffects();
 
-    console.log('✓ Board created with', HEX_POSITIONS.length, 'hexes');
+    console.log('✓ Board created with', HEX_POSITIONS.length, 'hexes - loading animation started');
 }
 
 // ============================================================================
@@ -276,28 +405,28 @@ function startScanningEffects() {
 // INTERACTION HANDLERS
 // ============================================================================
 
-// Helper: Get neighboring hex indices (hexagonal grid neighbors)
-const HEX_NEIGHBORS = {
-    0: [1, 2],
-    1: [0, 2, 3, 4, 6],
-    2: [0, 1, 4, 5, 7],
-    3: [1, 4, 6, 8],
-    4: [1, 2, 3, 5, 6, 7, 9],
-    5: [2, 4, 7, 10],
-    6: [1, 3, 4, 8, 9, 11],
-    7: [2, 4, 5, 9, 10, 12],
-    8: [3, 6, 9, 11, 13],
-    9: [4, 6, 7, 8, 10, 11, 12, 14], // Center
-    10: [5, 7, 9, 12, 15],
-    11: [6, 8, 9, 13, 14, 16],
-    12: [7, 9, 10, 14, 15, 17],
-    13: [8, 11, 14, 16],
-    14: [9, 11, 12, 13, 15, 16, 17, 18],
-    15: [10, 12, 14, 17],
-    16: [11, 13, 14, 18],
-    17: [12, 14, 15, 18],
-    18: [14, 16, 17]
-};
+// Helper: Calculate neighboring hex indices based on actual distance
+function getNeighbors(index) {
+    const pos = HEX_POSITIONS[index];
+    const neighbors = [];
+    // Use hex width as the threshold - should cover all 6 neighbors
+    const maxDistance = HEX_WIDTH * 1.2;
+
+    HEX_POSITIONS.forEach((otherPos, otherIndex) => {
+        if (otherIndex === index) return; // Skip self
+
+        const dx = pos.x - otherPos.x;
+        const dy = pos.y - otherPos.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        // If distance is within one hex width, it's a neighbor
+        if (distance > 0 && distance < maxDistance) {
+            neighbors.push(otherIndex);
+        }
+    });
+
+    return neighbors;
+}
 
 function onHexHover(hex, index, isOver) {
     if (gameState.gameOver || !hexData[index].isEmpty) return;
@@ -317,8 +446,8 @@ function onHexHover(hex, index, isOver) {
             ease: 'power2.out'
         });
 
-        // Add subtle glow filter
-        const glowColor = gameState.currentPlayer === 1 ? COLORS.glow.player2 : COLORS.glow.player1;
+        // Add subtle glow filter - match current player's color
+        const glowColor = gameState.currentPlayer === 1 ? COLORS.glow.player1 : COLORS.glow.player2;
         const glow = new GlowFilter({
             distance: 10,
             outerStrength: 1.5,
@@ -348,7 +477,7 @@ function onHexHover(hex, index, isOver) {
         hex.endFill();
 
         // RIPPLE EFFECT - Highlight neighboring hexes
-        const neighbors = HEX_NEIGHBORS[index] || [];
+        const neighbors = getNeighbors(index);
         neighbors.forEach((neighborIndex, i) => {
             const neighborHex = hexGraphics[neighborIndex];
             if (neighborHex && hexData[neighborIndex].isEmpty) {
@@ -442,9 +571,10 @@ function onHexClick(hex, index) {
 
     console.log('Hex clicked:', hexId);
 
-    // Cyan ripple ring on placement
+    // Player-colored ripple ring on placement
+    const ringColor = gameState.currentPlayer === 1 ? COLORS.glow.player1 : COLORS.glow.player2;
     const ring = new PIXI.Graphics();
-    ring.lineStyle(3, 0x00d9ff, 1);
+    ring.lineStyle(3, ringColor, 1);
     ring.drawCircle(0, 0, HEX_SIZE);
     ring.x = pos.x;
     ring.y = pos.y;
