@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HEXUKI - Strategy Game</title>
+    <!-- Google Fonts for cyberpunk options -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Barlow:wght@500;600;700&family=DM+Sans:wght@500;700&family=Chakra+Petch:wght@500;600;700&family=Saira:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0a0e27;  /* Dark cyberpunk void */
+            color: #fff;
+            overflow: hidden;
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #pixi-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 1000;
+        }
+
+        .loading h1 {
+            font-size: 3em;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255, 255, 255, 0.2);
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            pointer-events: none;
+        }
+
+        .ui-panel {
+            pointer-events: all;
+        }
+
+        .ui-panel {
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .ui-panel h2 {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            color: #667eea;
+        }
+
+        .score-display {
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+
+        .player1-score { color: #ff006e; }  /* Hot magenta */
+        .player2-score { color: #0d47a1; }  /* Dark cyberpunk blue */
+
+        /* CYBERPUNK SCAN LINES - The CRT effect! */
+        .scanlines {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 999;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 255, 255, 0.03) 0px,
+                rgba(0, 255, 255, 0.03) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+            animation: scan 10s linear infinite;
+        }
+
+        @keyframes scan {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(20px); }
+        }
+    </style>
+</head>
+<body>
+    <!-- SCAN LINES OVERLAY -->
+    <div class="scanlines"></div>
+
+    <div id="game-container">
+        <div class="loading" id="loading">
+            <h1>HEXUKI</h1>
+            <div class="loading-spinner"></div>
+            <p style="margin-top: 20px; opacity: 0.8;">Loading game...</p>
+        </div>
+
+        <div class="ui-overlay" id="ui-overlay" style="display: none;">
+            <div class="ui-panel">
+                <h2>Game Status</h2>
+                <div id="turn-indicator">Player 1's Turn</div>
+            </div>
+
+            <div class="ui-panel">
+                <h2>Score</h2>
+                <div class="score-display">
+                    <div><span class="player1-score">P1:</span> <span id="p1-score">0</span></div>
+                    <div><span class="player2-score">P2:</span> <span id="p2-score">0</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load WASM and game engine first -->
+    <script src="/hexuki.js"></script>
+    <script src="/hexuki_game_engine_asymmetric.js"></script>
+
+    <!-- Load our beautiful PixiJS app -->
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>

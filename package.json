@@ -1,0 +1,20 @@
+{
+  "name": "hexuki-game",
+  "version": "1.0.0",
+  "description": "Hexuki - Beautiful hexagonal strategy game",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@pixi/filter-glow": "^5.2.1",
+    "@pixi/particle-emitter": "^5.0.8",
+    "gsap": "^3.12.5",
+    "pixi.js": "^7.4.2"
+  },
+  "devDependencies": {
+    "vite": "^5.2.10"
+  }
+}
