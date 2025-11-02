@@ -771,31 +771,34 @@ const flashManager = {
 
         console.log(`🌐 Grid sweep from ${cornerNames[corner]} corner`);
 
-        // Animate diagonal wave - quick flash
+        // Animate with glitchy flicker effect
         const timeline = gsap.timeline({
             onComplete: () => {
                 this.gridSweepActive = false;
             }
         });
 
-        // Quick fade in
-        timeline.to(grid, {
-            alpha: 0.5,
-            duration: 0.3,
-            ease: 'power2.out'
-        });
+        // Glitchy flicker sequence - random alpha values with sharp cuts
+        const flickers = [
+            { alpha: 0.6, duration: 0.05 },
+            { alpha: 0.2, duration: 0.03 },
+            { alpha: 0.7, duration: 0.04 },
+            { alpha: 0.1, duration: 0.02 },
+            { alpha: 0.8, duration: 0.06 },
+            { alpha: 0.4, duration: 0.03 },
+            { alpha: 0.65, duration: 0.08 },
+            { alpha: 0.3, duration: 0.04 },
+            { alpha: 0.5, duration: 0.05 },
+            { alpha: 0, duration: 0.15 }
+        ];
 
-        // Brief hold
-        timeline.to(grid, {
-            alpha: 0.5,
-            duration: 0.2
-        });
-
-        // Quick fade out
-        timeline.to(grid, {
-            alpha: 0,
-            duration: 0.4,
-            ease: 'power2.in'
+        // Add each flicker to timeline with stepped easing (instant cuts)
+        flickers.forEach(flicker => {
+            timeline.to(grid, {
+                alpha: flicker.alpha,
+                duration: flicker.duration,
+                ease: 'steps(1)' // Instant jump, no smooth transition
+            });
         });
     },
 
