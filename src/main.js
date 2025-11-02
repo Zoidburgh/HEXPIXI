@@ -710,47 +710,57 @@ const flashManager = {
     },
 
     // DIAGONAL GRID HIGHLIGHT SWEEP: Reveal the underlying grid structure
-    gridHighlight: null,
+    gridLines: [],
+    gridContainer: null,
     gridSweepActive: false,
 
-    createGridHighlight() {
-        // Create grid graphics if not already created
-        if (!this.gridHighlight) {
-            this.gridHighlight = new PIXI.Graphics();
-            this.gridHighlight.alpha = 0;
-
-            // Add slight blur for softer look
-            const blur = new PIXI.filters.BlurFilter();
-            blur.blur = 1.5;
-            this.gridHighlight.filters = [blur];
-
-            flashContainer.addChild(this.gridHighlight); // Add to flash layer (behind board)
+    createGridLines() {
+        // Clear existing lines
+        if (this.gridContainer) {
+            this.gridContainer.destroy({ children: true });
         }
 
-        // Clear and redraw grid - simple solid lines
-        this.gridHighlight.clear();
+        this.gridContainer = new PIXI.Container();
+        flashContainer.addChild(this.gridContainer); // Behind board
 
-        const gridSize = 100; // Match flash grid spacing
+        // PERFORMANCE: Apply single blur filter to container instead of each line
+        const blur = new PIXI.filters.BlurFilter();
+        blur.blur = 1.5;
+        this.gridContainer.filters = [blur];
+
+        this.gridLines = [];
+
+        const gridSize = 100;
         const width = app.screen.width;
         const height = app.screen.height;
-        const lineWidth = 1.5; // Thicker than pencil thin
-        const flashColor = 0xFFD700; // Bright gold
+        const lineWidth = 1.5;
+        const flashColor = 0xFFD700;
 
-        this.gridHighlight.lineStyle(lineWidth, flashColor, 0.7); // Consistent thickness and opacity
-
-        // Draw vertical grid lines
+        // Create vertical grid lines as individual graphics
         for (let x = 0; x <= width; x += gridSize) {
-            this.gridHighlight.moveTo(x, 0);
-            this.gridHighlight.lineTo(x, height);
+            const line = new PIXI.Graphics();
+            line.lineStyle(lineWidth, flashColor, 0.7);
+            line.moveTo(0, 0);
+            line.lineTo(0, height);
+            line.position.x = x;
+            line.alpha = 0;
+            this.gridContainer.addChild(line);
+            this.gridLines.push({ graphic: line, x, y: 0 });
         }
 
-        // Draw horizontal grid lines
+        // Create horizontal grid lines as individual graphics
         for (let y = 0; y <= height; y += gridSize) {
-            this.gridHighlight.moveTo(0, y);
-            this.gridHighlight.lineTo(width, y);
+            const line = new PIXI.Graphics();
+            line.lineStyle(lineWidth, flashColor, 0.7);
+            line.moveTo(0, 0);
+            line.lineTo(width, 0);
+            line.position.y = y;
+            line.alpha = 0;
+            this.gridContainer.addChild(line);
+            this.gridLines.push({ graphic: line, x: 0, y });
         }
 
-        return this.gridHighlight;
+        return this.gridLines;
     },
 
     triggerDiagonalGridSweep() {
@@ -762,8 +772,10 @@ const flashManager = {
 
         this.gridSweepActive = true;
 
-        // Create/update grid graphics
-        const grid = this.createGridHighlight();
+        // Create grid lines if not already created
+        if (this.gridLines.length === 0) {
+            this.createGridLines();
+        }
 
         // Pick random corner: 0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right
         const corner = Math.floor(Math.random() * 4);
@@ -771,33 +783,71 @@ const flashManager = {
 
         console.log(`🌐 Grid sweep from ${cornerNames[corner]} corner`);
 
-        // Animate with glitchy flicker effect
-        const timeline = gsap.timeline({
-            onComplete: () => {
-                this.gridSweepActive = false;
-            }
+        // Calculate origin point based on corner
+        const width = app.screen.width;
+        const height = app.screen.height;
+        let originX, originY;
+
+        switch(corner) {
+            case 0: // top-left
+                originX = 0;
+                originY = 0;
+                break;
+            case 1: // top-right
+                originX = width;
+                originY = 0;
+                break;
+            case 2: // bottom-left
+                originX = 0;
+                originY = height;
+                break;
+            case 3: // bottom-right
+                originX = width;
+                originY = height;
+                break;
+        }
+
+        // Sort lines by distance from corner
+        const linesWithDistance = this.gridLines.map(line => {
+            const dx = line.x - originX;
+            const dy = line.y - originY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            return { ...line, distance };
         });
+        linesWithDistance.sort((a, b) => a.distance - b.distance);
 
-        // Glitchy flicker sequence - more transparent alpha values for better blending
-        const flickers = [
-            { alpha: 0.3, duration: 0.05 },
-            { alpha: 0.1, duration: 0.03 },
-            { alpha: 0.35, duration: 0.04 },
-            { alpha: 0.05, duration: 0.02 },
-            { alpha: 0.4, duration: 0.06 },
-            { alpha: 0.2, duration: 0.03 },
-            { alpha: 0.3, duration: 0.08 },
-            { alpha: 0.15, duration: 0.04 },
-            { alpha: 0.25, duration: 0.05 },
-            { alpha: 0, duration: 0.15 }
-        ];
+        // Animate each line with staggered glitchy flicker
+        const staggerDelay = 0.015; // 15ms between each line starting
 
-        // Add each flicker to timeline with stepped easing (instant cuts)
-        flickers.forEach(flicker => {
-            timeline.to(grid, {
-                alpha: flicker.alpha,
-                duration: flicker.duration,
-                ease: 'steps(1)' // Instant jump, no smooth transition
+        linesWithDistance.forEach((line, index) => {
+            const startDelay = index * staggerDelay;
+
+            // Glitchy flicker sequence for each line
+            const timeline = gsap.timeline({
+                delay: startDelay,
+                onComplete: () => {
+                    if (index === linesWithDistance.length - 1) {
+                        this.gridSweepActive = false;
+                    }
+                }
+            });
+
+            // Shorter flicker sequence - fast wave pass
+            const flickers = [
+                { alpha: 0.35, duration: 0.03 },
+                { alpha: 0.15, duration: 0.02 },
+                { alpha: 0.4, duration: 0.04 },
+                { alpha: 0.2, duration: 0.02 },
+                { alpha: 0.3, duration: 0.03 },
+                { alpha: 0, duration: 0.08 }
+            ];
+
+            flickers.forEach(flicker => {
+                timeline.to(line.graphic, {
+                    alpha: flicker.alpha,
+                    duration: flicker.duration,
+                    ease: 'steps(1)' // Instant jump for glitchy look
+                });
             });
         });
     },
