@@ -771,30 +771,30 @@ const flashManager = {
 
         console.log(`🌐 Grid sweep from ${cornerNames[corner]} corner`);
 
-        // Animate diagonal wave
+        // Animate diagonal wave - quick flash
         const timeline = gsap.timeline({
             onComplete: () => {
                 this.gridSweepActive = false;
             }
         });
 
-        // Fade in with diagonal sweep feel (fast reveal)
+        // Quick fade in
         timeline.to(grid, {
-            alpha: 0.4,
-            duration: 0.7,
+            alpha: 0.5,
+            duration: 0.3,
             ease: 'power2.out'
         });
 
-        // Hold visible
+        // Brief hold
         timeline.to(grid, {
-            alpha: 0.4,
-            duration: 0.5
+            alpha: 0.5,
+            duration: 0.2
         });
 
-        // Fade out
+        // Quick fade out
         timeline.to(grid, {
             alpha: 0,
-            duration: 0.8,
+            duration: 0.4,
             ease: 'power2.in'
         });
     },
