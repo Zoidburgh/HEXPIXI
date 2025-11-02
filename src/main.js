@@ -142,6 +142,7 @@ const hexGraphics = [];
 const tileTexts = [];
 const hexData = []; // Store additional data per hex
 const validMoveGlowGraphics = []; // Store glow graphics for valid moves
+let lastHighlightedPlayer = null; // Track last player to debounce glow updates
 
 // ============================================================================
 // FPS COUNTER
@@ -181,6 +182,23 @@ app.ticker.add(() => {
         }
     }
 });
+
+// ============================================================================
+// PERFORMANCE MONITORING
+// ============================================================================
+
+// Log active graphics counts periodically for performance monitoring
+function logPerformanceMetrics() {
+    const glowCount = validMoveGlowGraphics.filter(g => g !== null).length;
+    const flashCount = flashManager.activeFlashes.length;
+    const beamCount = activeBeams.length;
+    const tilesPlaced = hexData.filter(h => !h.isEmpty).length;
+
+    console.log(`📊 Performance: Glows=${glowCount} Flashes=${flashCount} Beams=${beamCount} Tiles=${tilesPlaced}/19`);
+}
+
+// Log metrics every 10 seconds
+setInterval(logPerformanceMetrics, 10000);
 
 // ============================================================================
 // PARTICLE SYSTEM (DISABLED FOR PERFORMANCE)
@@ -520,6 +538,12 @@ const flashManager = {
 
     // Trigger a burst of 1-2 flashes (reduced for performance)
     triggerFlashBurst() {
+        // PERFORMANCE: Limit concurrent flashes to prevent accumulation
+        if (this.activeFlashes.length > 10) {
+            console.warn('⚠️ Flash limit reached, skipping burst');
+            return;
+        }
+
         const flashCount = 1 + Math.floor(Math.random() * 2); // 1-2 flashes
 
         for (let i = 0; i < flashCount; i++) {
@@ -1045,7 +1069,7 @@ const tileInventoryManager = {
     clearHexHighlights() {
         validMoveGlowGraphics.forEach((glowGraphic, index) => {
             if (glowGraphic) {
-                // Kill animations
+                // CRITICAL: Kill animations FIRST to prevent orphaned tweens
                 gsap.killTweensOf(glowGraphic);
 
                 // Remove from container
@@ -1053,13 +1077,16 @@ const tileInventoryManager = {
                     boardContainer.removeChild(glowGraphic);
                 }
 
-                // Destroy the graphic
+                // Destroy the graphic completely
                 glowGraphic.destroy({ children: true, texture: true, baseTexture: true });
 
                 // Clear reference
                 validMoveGlowGraphics[index] = null;
             }
         });
+
+        // Force clear the array completely to prevent memory leaks
+        validMoveGlowGraphics.length = 0;
 
         // Clear the markers
         hexData.forEach(data => {
@@ -1108,7 +1135,10 @@ const tileInventoryManager = {
         });
 
         // Digital particle explosion - mix of shapes and sizes
-        const particleCount = 35;
+        // PERFORMANCE: Scale down particles based on board fullness
+        const tilesPlaced = hexData.filter(h => !h.isEmpty).length;
+        const particleScale = Math.max(0.3, 1 - (tilesPlaced / 19) * 0.7); // 35 → 11 as board fills
+        const particleCount = Math.floor(35 * particleScale);
         for (let i = 0; i < particleCount; i++) {
             const particle = new PIXI.Graphics();
 
@@ -1643,13 +1673,25 @@ function rippleInDirection(hexIds, startIndex, direction, glowColor) {
     }
 }
 
+// Track active beams for performance monitoring
+const activeBeams = [];
+
 function createEnergyBeam(hexIds, glowColor) {
+    // PERFORMANCE: Limit concurrent beams to prevent accumulation
+    if (activeBeams.length >= 6) {
+        console.warn('⚠️ Beam limit reached, skipping beam');
+        return;
+    }
+
     // Get positions for all hexes in the beam
     const positions = hexIds.map(id => HEX_POSITIONS.find(p => p.id === id)).filter(p => p);
     if (positions.length < 2) return;
 
     // Create the beam line
     const beam = new PIXI.Graphics();
+
+    // Track this beam
+    activeBeams.push(beam);
 
     // Add glow effect for energy beam (reduced quality for performance)
     const beamGlow = new GlowFilter({
@@ -1721,6 +1763,10 @@ function createEnergyBeam(hexIds, glowColor) {
                     // Kill any remaining tweens
                     gsap.killTweensOf(beam);
                     gsap.killTweensOf(animState);
+
+                    // Remove from active beams tracking
+                    const beamIndex = activeBeams.indexOf(beam);
+                    if (beamIndex > -1) activeBeams.splice(beamIndex, 1);
 
                     // Destroy filters first
                     if (beam.filters) {
@@ -2019,8 +2065,11 @@ function onHexClick(hex, index) {
     // Update tile opacity for new turn
     tileInventoryManager.updateOpacity();
 
-    // Update valid hex highlights for new player
-    tileInventoryManager.highlightValidHexes();
+    // Update valid hex highlights for new player (debounced)
+    if (lastHighlightedPlayer !== gameState.currentPlayer) {
+        lastHighlightedPlayer = gameState.currentPlayer;
+        tileInventoryManager.highlightValidHexes();
+    }
 
     updateUI();
 }
