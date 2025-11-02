@@ -880,8 +880,7 @@ const tileInventoryManager = {
             this.redrawSegment(segment, player, tileData, true);
         }
 
-        // Highlight valid hexes
-        this.highlightValidHexes(value);
+        // Valid hexes are already highlighted passively (no need to call here)
 
         console.log(`✓ Selected tile: ${value} for Player ${player}`);
     },
@@ -915,40 +914,50 @@ const tileInventoryManager = {
 
         this.selectedTile = null;
 
-        // Remove hex highlights
-        this.clearHexHighlights();
+        // Valid hexes stay highlighted (passive glow, no need to clear)
 
         console.log('✗ Tile deselected');
     },
 
-    highlightValidHexes(tileValue) {
+    // PASSIVE GLOW: Highlight all valid hexes for current player (always on)
+    highlightValidHexes() {
         if (!gameState.wasmEngine) return;
 
+        // Clear previous highlights first
+        this.clearHexHighlights();
+
         const validMoves = gameState.wasmEngine.getAllValidMoves();
+        const currentPlayer = gameState.currentPlayer;
+        const glowColor = currentPlayer === 1 ? COLORS.glow.player1 : COLORS.glow.player2;
 
         validMoves.forEach(move => {
-            if (move.tileValue === tileValue) {
-                const hexGraphic = hexGraphics[move.hexId];
-                if (hexGraphic) {
-                    const glow = new GlowFilter({
-                        distance: 10,
-                        outerStrength: 1.5,
-                        innerStrength: 0.5,
-                        color: 0x00d9ff,
-                        quality: 0.3
-                    });
+            const hexGraphic = hexGraphics[move.hexId];
+            const hexIndex = HEX_POSITIONS.findIndex(p => p.id === move.hexId);
 
-                    if (!hexGraphic.filters) hexGraphic.filters = [];
-                    hexGraphic.filters.push(glow);
+            if (hexGraphic && hexData[hexIndex] && hexData[hexIndex].isEmpty) {
+                const glow = new GlowFilter({
+                    distance: 3,
+                    outerStrength: 0.2,
+                    innerStrength: 0.1,
+                    color: glowColor,
+                    quality: 0.3
+                });
 
-                    gsap.to(glow, {
-                        outerStrength: 2.5,
-                        duration: 0.8,
-                        yoyo: true,
-                        repeat: -1,
-                        ease: 'sine.inOut'
-                    });
-                }
+                if (!hexGraphic.filters) hexGraphic.filters = [];
+                hexGraphic.filters.push(glow);
+
+                // Mark this hex as having a valid move glow and store reference
+                hexData[hexIndex].hasValidMoveGlow = true;
+                hexData[hexIndex].validMoveGlowFilter = glow;
+
+                // Very subtle pulse - from 0.2 to 0.35
+                gsap.to(glow, {
+                    outerStrength: 0.35,
+                    duration: 1.2,
+                    yoyo: true,
+                    repeat: -1,
+                    ease: 'sine.inOut'
+                });
             }
         });
     },
@@ -957,8 +966,19 @@ const tileInventoryManager = {
         hexGraphics.forEach((hex, index) => {
             // Only clear filters from EMPTY hexes (don't touch placed tiles)
             if (hexData[index].isEmpty && hex.filters) {
+                // Kill any glow animations
+                hex.filters.forEach(f => {
+                    if (f instanceof GlowFilter) {
+                        gsap.killTweensOf(f);
+                    }
+                });
+
                 hex.filters = hex.filters.filter(f => !(f instanceof GlowFilter));
                 if (hex.filters.length === 0) hex.filters = null;
+
+                // Clear the markers and stored reference
+                hexData[index].hasValidMoveGlow = false;
+                hexData[index].validMoveGlowFilter = null;
             }
         });
     },
@@ -1519,14 +1539,21 @@ function onHexHover(hex, index, isOver) {
 
         // Add subtle glow filter - match current player's color
         const glowColor = gameState.currentPlayer === 1 ? COLORS.glow.player1 : COLORS.glow.player2;
-        const glow = new GlowFilter({
-            distance: 10,
-            outerStrength: 1.5,
-            innerStrength: 0.5,
-            color: glowColor,
-            quality: 0.5
-        });
-        hex.filters = [glow];
+
+        // Only add hover glow if there's no valid move glow
+        // (valid move glow is already pulsing, don't interfere with it)
+        if (!hexData[index].hasValidMoveGlow) {
+            const hoverGlow = new GlowFilter({
+                distance: 10,
+                outerStrength: 1.5,
+                innerStrength: 0.5,
+                color: glowColor,
+                quality: 0.5
+            });
+
+            if (!hex.filters) hex.filters = [];
+            hex.filters.push(hoverGlow);
+        }
 
         // Redraw with hover color (centered at origin)
         hex.clear();
@@ -1547,54 +1574,54 @@ function onHexHover(hex, index, isOver) {
         hex.closePath();
         hex.endFill();
 
-        // RIPPLE EFFECT - Highlight neighboring hexes
-        const neighbors = getNeighbors(index);
-        neighbors.forEach((neighborIndex, i) => {
-            const neighborHex = hexGraphics[neighborIndex];
-            if (neighborHex && hexData[neighborIndex].isEmpty) {
-                // Stagger the ripple effect
-                setTimeout(() => {
-                    // Very subtle neighbor glow (less intense than main hex)
-                    const neighborGlow = new GlowFilter({
-                        distance: 7.2,
-                        outerStrength: 0.96,
-                        innerStrength: 0.36,
-                        color: glowColor,
-                        quality: 0.3
-                    });
-                    neighborHex.filters = [neighborGlow];
-
-                    // Very subtle scale pulse
-                    gsap.to(neighborHex.scale, {
-                        x: 1.036,
-                        y: 1.036,
-                        duration: 0.2,
-                        ease: 'power2.out',
-                        onComplete: () => {
-                            gsap.to(neighborHex.scale, {
-                                x: 1,
-                                y: 1,
-                                duration: 0.2,
-                                ease: 'power2.in'
-                            });
-                        }
-                    });
-
-                    // Fade glow out with cascading effect
-                    gsap.to(neighborGlow, {
-                        outerStrength: 0,
-                        duration: 0.2,
-                        delay: 0.15 + (i * 0.05), // Cascading fade delay
-                        ease: 'power2.out',
-                        onComplete: () => {
-                            if (hexData[neighborIndex].isEmpty && !hexData[neighborIndex].isHovered) {
-                                neighborHex.filters = [];
-                            }
-                        }
-                    });
-                }, i * 30); // Stagger by 30ms per neighbor
-            }
-        });
+        // RIPPLE EFFECT - DISABLED (will reactivate later)
+        // const neighbors = getNeighbors(index);
+        // neighbors.forEach((neighborIndex, i) => {
+        //     const neighborHex = hexGraphics[neighborIndex];
+        //     if (neighborHex && hexData[neighborIndex].isEmpty) {
+        //         // Stagger the ripple effect
+        //         setTimeout(() => {
+        //             // Very subtle neighbor glow (less intense than main hex)
+        //             const neighborGlow = new GlowFilter({
+        //                 distance: 7.2,
+        //                 outerStrength: 0.96,
+        //                 innerStrength: 0.36,
+        //                 color: glowColor,
+        //                 quality: 0.3
+        //             });
+        //             neighborHex.filters = [neighborGlow];
+        //
+        //             // Very subtle scale pulse
+        //             gsap.to(neighborHex.scale, {
+        //                 x: 1.036,
+        //                 y: 1.036,
+        //                 duration: 0.2,
+        //                 ease: 'power2.out',
+        //                 onComplete: () => {
+        //                     gsap.to(neighborHex.scale, {
+        //                         x: 1,
+        //                         y: 1,
+        //                         duration: 0.2,
+        //                         ease: 'power2.in'
+        //                     });
+        //                 }
+        //             });
+        //
+        //             // Fade glow out with cascading effect
+        //             gsap.to(neighborGlow, {
+        //                 outerStrength: 0,
+        //                 duration: 0.2,
+        //                 delay: 0.15 + (i * 0.05), // Cascading fade delay
+        //                 ease: 'power2.out',
+        //                 onComplete: () => {
+        //                     if (hexData[neighborIndex].isEmpty && !hexData[neighborIndex].isHovered) {
+        //                         neighborHex.filters = [];
+        //                     }
+        //                 }
+        //             });
+        //         }, i * 30); // Stagger by 30ms per neighbor
+        //     }
+        // });
 
         // Particle effects disabled for performance
         // particleManager.startHoverEmitter(hex.hexId, pos.x, pos.y);
@@ -1617,8 +1644,12 @@ function onHexHover(hex, index, isOver) {
             ease: 'power2.out'
         });
 
-        // Remove filters
-        hex.filters = [];
+        // Only clear filters if there's no valid move glow
+        // (if there is one, we never touched it, so leave it alone)
+        if (!hexData[index].hasValidMoveGlow) {
+            hex.filters = [];
+        }
+        // else: hex already has its valid move glow filter, don't touch it
 
         // Redraw with normal colors (centered at origin)
         hex.clear();
@@ -1729,12 +1760,17 @@ function onHexClick(hex, index) {
     // Update tile opacity for new turn
     tileInventoryManager.updateOpacity();
 
+    // Update valid hex highlights for new player
+    tileInventoryManager.highlightValidHexes();
+
     updateUI();
 }
 
 function placeTile(hexId, index, player, value) {
     gameState.board[hexId] = { player, value };
     hexData[index].isEmpty = false;
+    hexData[index].hasValidMoveGlow = false;
+    hexData[index].validMoveGlowFilter = null;
 
     // Stop hover effects
     particleManager.stopHoverEmitter(hexId);
@@ -1945,6 +1981,11 @@ async function init() {
         tileInventoryManager.displayTiles(1, engineState.player1Tiles);
         tileInventoryManager.displayTiles(2, engineState.player2Tiles);
         tileInventoryManager.updateOpacity();
+
+        // Highlight valid hexes for the starting player (passive glow)
+        setTimeout(() => {
+            tileInventoryManager.highlightValidHexes();
+        }, 1700); // Wait for board animation to complete
 
         console.log('🎲 Player 1 tiles:', engineState.player1Tiles);
         console.log('🎲 Player 2 tiles:', engineState.player2Tiles);
