@@ -718,58 +718,36 @@ const flashManager = {
         if (!this.gridHighlight) {
             this.gridHighlight = new PIXI.Graphics();
             this.gridHighlight.alpha = 0;
+
+            // Add slight blur for softer look
+            const blur = new PIXI.filters.BlurFilter();
+            blur.blur = 1.5;
+            this.gridHighlight.filters = [blur];
+
             flashContainer.addChild(this.gridHighlight); // Add to flash layer (behind board)
         }
 
-        // Clear and redraw grid with segmented fade style (matches flash lines)
+        // Clear and redraw grid - simple solid lines
         this.gridHighlight.clear();
 
         const gridSize = 100; // Match flash grid spacing
         const width = app.screen.width;
         const height = app.screen.height;
-        const baseLineWidth = 0.9; // Thin lines like "far" depth flash lines
-        const segments = 7;
+        const lineWidth = 1.5; // Thicker than pencil thin
         const flashColor = 0xFFD700; // Bright gold
 
-        // Helper to draw segmented line with gradient alpha (matches flash style)
-        const drawSegmentedLine = (x1, y1, x2, y2) => {
-            const lineLength = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
-            const segmentLength = lineLength / segments;
-            const dx = (x2 - x1) / segments;
-            const dy = (y2 - y1) / segments;
+        this.gridHighlight.lineStyle(lineWidth, flashColor, 0.7); // Consistent thickness and opacity
 
-            for (let i = 0; i < segments; i++) {
-                const t = i / (segments - 1);
-
-                // Exponential fade from center (matches flash line fade)
-                const centerDist = Math.abs(t * 2 - 1); // 0 at center, 1 at ends
-                const alphaCurve = 1 - centerDist;
-                const segmentAlpha = Math.pow(alphaCurve, 2.5); // Exponential fade
-
-                // Thickness varies along length (thicker in middle)
-                const thicknessCurve = 1 - Math.pow(centerDist, 1.8);
-                const segmentWidth = baseLineWidth * (0.5 + thicknessCurve * 0.5);
-
-                this.gridHighlight.lineStyle(segmentWidth, flashColor, segmentAlpha * 0.6); // Slightly dimmer than flashes
-
-                const sx = x1 + i * dx;
-                const sy = y1 + i * dy;
-                const ex = sx + dx;
-                const ey = sy + dy;
-
-                this.gridHighlight.moveTo(sx, sy);
-                this.gridHighlight.lineTo(ex, ey);
-            }
-        };
-
-        // Draw vertical grid lines with segmented fade
+        // Draw vertical grid lines
         for (let x = 0; x <= width; x += gridSize) {
-            drawSegmentedLine(x, 0, x, height);
+            this.gridHighlight.moveTo(x, 0);
+            this.gridHighlight.lineTo(x, height);
         }
 
-        // Draw horizontal grid lines with segmented fade
+        // Draw horizontal grid lines
         for (let y = 0; y <= height; y += gridSize) {
-            drawSegmentedLine(0, y, width, y);
+            this.gridHighlight.moveTo(0, y);
+            this.gridHighlight.lineTo(width, y);
         }
 
         return this.gridHighlight;
