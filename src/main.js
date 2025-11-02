@@ -709,6 +709,87 @@ const flashManager = {
         console.log(`🎆 Player ${player} tile scan waves: ${direction}`);
     },
 
+    // DIAGONAL GRID HIGHLIGHT SWEEP: Reveal the underlying grid structure
+    gridHighlight: null,
+    gridSweepActive: false,
+
+    createGridHighlight() {
+        // Create grid graphics if not already created
+        if (!this.gridHighlight) {
+            this.gridHighlight = new PIXI.Graphics();
+            this.gridHighlight.alpha = 0;
+            particleContainer.addChild(this.gridHighlight); // Add to particle layer
+        }
+
+        // Clear and redraw grid
+        this.gridHighlight.clear();
+        this.gridHighlight.lineStyle(1, 0xFFD700, 1); // 1px bright gold lines
+
+        const gridSize = 100; // Match flash grid spacing
+        const width = app.screen.width;
+        const height = app.screen.height;
+
+        // Draw vertical grid lines
+        for (let x = 0; x <= width; x += gridSize) {
+            this.gridHighlight.moveTo(x, 0);
+            this.gridHighlight.lineTo(x, height);
+        }
+
+        // Draw horizontal grid lines
+        for (let y = 0; y <= height; y += gridSize) {
+            this.gridHighlight.moveTo(0, y);
+            this.gridHighlight.lineTo(width, y);
+        }
+
+        return this.gridHighlight;
+    },
+
+    triggerDiagonalGridSweep() {
+        // PERFORMANCE: Skip if sweep already active
+        if (this.gridSweepActive) {
+            console.warn('⚠️ Grid sweep skipped - already active');
+            return;
+        }
+
+        this.gridSweepActive = true;
+
+        // Create/update grid graphics
+        const grid = this.createGridHighlight();
+
+        // Pick random corner: 0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right
+        const corner = Math.floor(Math.random() * 4);
+        const cornerNames = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
+
+        console.log(`🌐 Grid sweep from ${cornerNames[corner]} corner`);
+
+        // Animate diagonal wave
+        const timeline = gsap.timeline({
+            onComplete: () => {
+                this.gridSweepActive = false;
+            }
+        });
+
+        // Fade in with diagonal sweep feel (fast reveal)
+        timeline.to(grid, {
+            alpha: 0.4,
+            duration: 0.7,
+            ease: 'power2.out'
+        });
+
+        // Hold visible
+        timeline.to(grid, {
+            alpha: 0.4,
+            duration: 0.5
+        });
+
+        // Fade out
+        timeline.to(grid, {
+            alpha: 0,
+            duration: 0.8,
+            ease: 'power2.in'
+        });
+    },
+
     // Start the flash system (call from init)
     start() {
         // Set board center position (center of screen)
@@ -745,6 +826,21 @@ const flashManager = {
             this.createScanSweep();
             scheduleScanSweep();
         }, 5000);
+
+        // DIAGONAL GRID SWEEP: Trigger every 12-25 seconds
+        const scheduleGridSweep = () => {
+            const delay = 12000 + Math.random() * 13000; // 12-25 seconds
+            setTimeout(() => {
+                this.triggerDiagonalGridSweep();
+                scheduleGridSweep(); // Schedule next one
+            }, delay);
+        };
+
+        // Start first grid sweep after 8 seconds
+        setTimeout(() => {
+            this.triggerDiagonalGridSweep();
+            scheduleGridSweep();
+        }, 8000);
     }
 };
 
