@@ -63,6 +63,25 @@ const HEX_POSITIONS = [
     {id: 18, x: 0, y: HEX_VERT * 2}
 ];
 
+// Scoring lanes - diagonal chains for each player
+// Player 1: Down-right diagonals (\)
+const PLAYER1_CHAINS = [
+    [0, 2, 5],           // Lane 1
+    [1, 4, 7, 10],       // Lane 2
+    [3, 6, 9, 12, 15],   // Lane 3 (center diagonal)
+    [8, 11, 14, 17],     // Lane 4
+    [13, 16, 18]         // Lane 5
+];
+
+// Player 2: Down-left diagonals (/)
+const PLAYER2_CHAINS = [
+    [0, 1, 3],           // Lane 1
+    [2, 4, 6, 8],        // Lane 2
+    [5, 7, 9, 11, 13],   // Lane 3 (center diagonal)
+    [10, 12, 14, 16],    // Lane 4
+    [15, 17, 18]         // Lane 5
+];
+
 // ============================================================================
 // GAME STATE
 // ============================================================================
@@ -122,6 +141,7 @@ app.stage.addChild(particleContainer);
 const hexGraphics = [];
 const tileTexts = [];
 const hexData = []; // Store additional data per hex
+const validMoveGlowGraphics = []; // Store glow graphics for valid moves
 
 // ============================================================================
 // FPS COUNTER
@@ -517,12 +537,15 @@ const flashManager = {
     },
 
     // SCAN SWEEP EFFECT: Edge-only scanner that morphs into wave
-    createScanSweep() {
+    createScanSweep(edge = null, color = 0xFFD700, segments = 100) {
         // Choose which edge: 0=top, 1=right, 2=bottom, 3=left
-        const edge = Math.floor(Math.random() * 4);
+        // If edge not specified, choose randomly
+        if (edge === null) {
+            edge = Math.floor(Math.random() * 4);
+        }
 
         const scanLine = new PIXI.Graphics();
-        const scanColor = 0xFFD700; // Bright gold
+        const scanColor = color; // Use provided color or default gold
         const scanWidth = 1.5;
 
         let isHorizontal, lineX, lineY, lineLength;
@@ -597,7 +620,7 @@ const flashManager = {
             const phaseOffset = elapsed * waveSpeed;
 
             const waveFrequency = 3;
-            const segments = 100;
+            // segments passed as parameter
 
             if (isHorizontal) {
                 // Draw horizontal wave
@@ -639,6 +662,27 @@ const flashManager = {
         requestAnimationFrame(animateWave);
 
         console.log(`⚡ Edge scan: ${['top', 'right', 'bottom', 'left'][edge]}`);
+    },
+
+    // PLAYER TILE SCAN WAVES: Random 2-edge scan waves in player color on tile placement
+    createPlayerTileScanWaves(player) {
+        // Get player's glow color
+        const playerColor = player === 1 ? COLORS.glow.player1 : COLORS.glow.player2;
+
+        // Randomly choose horizontal (top+bottom) OR vertical (left+right)
+        const isHorizontal = Math.random() > 0.5;
+        const edges = isHorizontal ? [0, 2] : [3, 1]; // [top, bottom] or [left, right]
+
+        // Trigger 2 opposing edges with staggering
+        // Reduced segments (60 instead of 100) for lighter performance
+        edges.forEach((edge, i) => {
+            setTimeout(() => {
+                this.createScanSweep(edge, playerColor, 60);
+            }, i * 80); // 80ms stagger for more dramatic cascading
+        });
+
+        const direction = isHorizontal ? 'horizontal (top+bottom)' : 'vertical (left+right)';
+        console.log(`🎆 Player ${player} tile scan waves: ${direction}`);
     },
 
     // Start the flash system (call from init)
@@ -916,6 +960,9 @@ const tileInventoryManager = {
 
         // Valid hexes stay highlighted (passive glow, no need to clear)
 
+        // Hide the preview cursor when tile is deselected
+        tilePreviewCursor.hide();
+
         console.log('✗ Tile deselected');
     },
 
@@ -933,26 +980,59 @@ const tileInventoryManager = {
         validMoves.forEach(move => {
             const hexGraphic = hexGraphics[move.hexId];
             const hexIndex = HEX_POSITIONS.findIndex(p => p.id === move.hexId);
+            const pos = HEX_POSITIONS[hexIndex];
 
-            if (hexGraphic && hexData[hexIndex] && hexData[hexIndex].isEmpty) {
-                const glow = new GlowFilter({
-                    distance: 3,
-                    outerStrength: 0.2,
-                    innerStrength: 0.1,
-                    color: glowColor,
-                    quality: 0.3
-                });
+            if (hexGraphic && hexData[hexIndex] && hexData[hexIndex].isEmpty && pos) {
+                // Clean up any existing glow first (safety check)
+                if (validMoveGlowGraphics[hexIndex]) {
+                    gsap.killTweensOf(validMoveGlowGraphics[hexIndex]);
+                    if (validMoveGlowGraphics[hexIndex].parent) {
+                        boardContainer.removeChild(validMoveGlowGraphics[hexIndex]);
+                    }
+                    validMoveGlowGraphics[hexIndex].destroy({ children: true, texture: true, baseTexture: true });
+                    validMoveGlowGraphics[hexIndex] = null;
+                }
 
-                if (!hexGraphic.filters) hexGraphic.filters = [];
-                hexGraphic.filters.push(glow);
+                // Create a custom glow graphic - simple hexagon outline
+                const glowGraphic = new PIXI.Graphics();
 
-                // Mark this hex as having a valid move glow and store reference
+                // Draw multiple concentric hexagon outlines for glow effect
+                for (let layer = 0; layer < 3; layer++) {
+                    const layerSize = HEX_SIZE + (layer * 3); // Each layer 3px bigger
+                    const alpha = 0.8 - (layer * 0.15); // Fade out each layer (0.8, 0.65, 0.5)
+
+                    glowGraphic.lineStyle(2.5, glowColor, alpha);
+
+                    for (let i = 0; i < 6; i++) {
+                        const angle = (Math.PI / 3) * i;
+                        const px = layerSize * Math.cos(angle);
+                        const py = layerSize * Math.sin(angle);
+
+                        if (i === 0) {
+                            glowGraphic.moveTo(px, py);
+                        } else {
+                            glowGraphic.lineTo(px, py);
+                        }
+                    }
+                    glowGraphic.closePath();
+                }
+
+                // Position the glow at the hex position
+                glowGraphic.x = pos.x;
+                glowGraphic.y = pos.y;
+                glowGraphic.pivot.set(0, 0);
+                glowGraphic.alpha = 0.6; // Start at moderate alpha
+
+                // Add to board container (behind hexes)
+                boardContainer.addChildAt(glowGraphic, 0);
+
+                // Store reference
+                validMoveGlowGraphics[hexIndex] = glowGraphic;
                 hexData[hexIndex].hasValidMoveGlow = true;
-                hexData[hexIndex].validMoveGlowFilter = glow;
 
-                // Very subtle pulse - from 0.2 to 0.35
-                gsap.to(glow, {
-                    outerStrength: 0.35,
+                // Pulse animation - gentle fade
+                gsap.to(glowGraphic, {
+                    alpha: 0.85,
                     duration: 1.2,
                     yoyo: true,
                     repeat: -1,
@@ -963,22 +1043,28 @@ const tileInventoryManager = {
     },
 
     clearHexHighlights() {
-        hexGraphics.forEach((hex, index) => {
-            // Only clear filters from EMPTY hexes (don't touch placed tiles)
-            if (hexData[index].isEmpty && hex.filters) {
-                // Kill any glow animations
-                hex.filters.forEach(f => {
-                    if (f instanceof GlowFilter) {
-                        gsap.killTweensOf(f);
-                    }
-                });
+        validMoveGlowGraphics.forEach((glowGraphic, index) => {
+            if (glowGraphic) {
+                // Kill animations
+                gsap.killTweensOf(glowGraphic);
 
-                hex.filters = hex.filters.filter(f => !(f instanceof GlowFilter));
-                if (hex.filters.length === 0) hex.filters = null;
+                // Remove from container
+                if (glowGraphic.parent) {
+                    boardContainer.removeChild(glowGraphic);
+                }
 
-                // Clear the markers and stored reference
-                hexData[index].hasValidMoveGlow = false;
-                hexData[index].validMoveGlowFilter = null;
+                // Destroy the graphic
+                glowGraphic.destroy({ children: true, texture: true, baseTexture: true });
+
+                // Clear reference
+                validMoveGlowGraphics[index] = null;
+            }
+        });
+
+        // Clear the markers
+        hexData.forEach(data => {
+            if (data) {
+                data.hasValidMoveGlow = false;
             }
         });
     },
@@ -1145,11 +1231,15 @@ const tilePreviewCursor = {
         // Create a ghost preview graphic (will be updated with selected tile)
         this.previewGraphic = new PIXI.Container();
         this.previewGraphic.alpha = 0;  // Hidden by default
+        this.previewGraphic.eventMode = 'none';  // Don't intercept pointer events
         boardContainer.addChild(this.previewGraphic);  // Add to board container for proper positioning
     },
 
     show(hexGraphic, tileValue, player) {
         if (!this.previewGraphic) return;
+
+        // Kill any existing animations to prevent conflicts
+        gsap.killTweensOf(this.previewGraphic);
 
         // Clear previous preview
         this.previewGraphic.removeChildren();
@@ -1162,38 +1252,19 @@ const tilePreviewCursor = {
         this.previewGraphic.x = hexPos.x;
         this.previewGraphic.y = hexPos.y;
 
-        // Create ghost tile appearance
+        // Create ghost tile appearance - just the number, no hex outline
         const color = player === 1 ? COLORS.tile.player1 : COLORS.tile.player2;
 
-        // Draw semi-transparent hex overlay
-        const ghostHex = new PIXI.Graphics();
-        ghostHex.lineStyle(3, color, 0.5);
-        ghostHex.beginFill(color, 0.2);
-
-        for (let i = 0; i < 6; i++) {
-            const angle = (Math.PI / 3) * i;
-            const x = HEX_SIZE * Math.cos(angle);
-            const y = HEX_SIZE * Math.sin(angle);
-            if (i === 0) {
-                ghostHex.moveTo(x, y);
-            } else {
-                ghostHex.lineTo(x, y);
-            }
-        }
-        ghostHex.closePath();
-        ghostHex.endFill();
-
-        // Add tile number
+        // Add tile number only (no hex shape)
         const text = new PIXI.Text(tileValue.toString(), {
-            fontFamily: 'Saira',
-            fontSize: 42,
+            fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+            fontSize: 72.657,
             fill: 0xffffff,
             fontWeight: '700'
         });
         text.anchor.set(0.5);
-        ghostHex.addChild(text);
 
-        this.previewGraphic.addChild(ghostHex);
+        this.previewGraphic.addChild(text);
 
         // Fade in
         gsap.to(this.previewGraphic, {
@@ -1206,6 +1277,9 @@ const tilePreviewCursor = {
 
     hide() {
         if (!this.previewGraphic) return;
+
+        // Kill any existing animations to prevent conflicts
+        gsap.killTweensOf(this.previewGraphic);
 
         gsap.to(this.previewGraphic, {
             alpha: 0,
@@ -1349,14 +1423,11 @@ function animateHexAppearance(hex, pos, delay) {
 function createHexagon(x, y, size, color, strokeColor) {
     const hex = new PIXI.Graphics();
 
-    // Set position first
-    hex.x = x;
-    hex.y = y;
-
-    // Draw hexagon centered at origin (0,0) so pivot works correctly
+    // Draw hexagon centered perfectly at (0,0)
     hex.lineStyle(3, strokeColor, 1);
     hex.beginFill(color, 1);
 
+    // Use flat-top hexagon with precise centering
     for (let i = 0; i < 6; i++) {
         const angle = (Math.PI / 3) * i;
         const px = size * Math.cos(angle);
@@ -1371,6 +1442,13 @@ function createHexagon(x, y, size, color, strokeColor) {
 
     hex.closePath();
     hex.endFill();
+
+    // Position the hex
+    hex.x = x;
+    hex.y = y;
+
+    // Explicitly set pivot to exact center (0,0) where hexagon was drawn
+    hex.pivot.set(0, 0);
 
     return hex;
 }
@@ -1519,6 +1597,151 @@ function getNeighbors(index) {
     return neighbors;
 }
 
+// Helper: Get scoring lanes affected by tile placement at hexId
+function getAffectedLanes(hexId, player) {
+    const chains = player === 1 ? PLAYER1_CHAINS : PLAYER2_CHAINS;
+    const affectedLanes = [];
+
+    chains.forEach((chain, laneIndex) => {
+        if (chain.includes(hexId)) {
+            affectedLanes.push({
+                laneIndex,
+                hexIds: chain,
+                startHexIndex: chain.indexOf(hexId)
+            });
+        }
+    });
+
+    return affectedLanes;
+}
+
+// Animate ripple effect down scoring lanes
+function animateScoringLaneRipple(lane, startHexId, player) {
+    const glowColor = player === 1 ? COLORS.glow.player1 : COLORS.glow.player2;
+    const { hexIds, startHexIndex } = lane;
+
+    // Ripple forward (toward end of lane)
+    rippleInDirection(hexIds, startHexIndex, 1, glowColor);
+
+    // Ripple backward (toward start of lane)
+    rippleInDirection(hexIds, startHexIndex, -1, glowColor);
+}
+
+function rippleInDirection(hexIds, startIndex, direction, glowColor) {
+    // Get hex positions for this direction
+    const beamHexIds = [];
+    let i = startIndex;
+
+    while (i >= 0 && i < hexIds.length) {
+        beamHexIds.push(hexIds[i]);
+        i += direction;
+    }
+
+    // Only create beam if there are at least 2 hexes
+    if (beamHexIds.length >= 2) {
+        createEnergyBeam(beamHexIds, glowColor);
+    }
+}
+
+function createEnergyBeam(hexIds, glowColor) {
+    // Get positions for all hexes in the beam
+    const positions = hexIds.map(id => HEX_POSITIONS.find(p => p.id === id)).filter(p => p);
+    if (positions.length < 2) return;
+
+    // Create the beam line
+    const beam = new PIXI.Graphics();
+
+    // Add glow effect for energy beam (reduced quality for performance)
+    const beamGlow = new GlowFilter({
+        distance: 15,
+        outerStrength: 2.0,
+        innerStrength: 0.6,
+        color: glowColor,
+        quality: 0.3
+    });
+    beam.filters = [beamGlow];
+    beam.alpha = 0.4;  // More transparent to not overpower tiles
+    boardContainer.addChild(beam);
+
+    // Function to draw beam at a specific progress (0 to 1)
+    const drawBeam = (progress) => {
+        beam.clear();
+        beam.lineStyle(4, glowColor, 0.8);  // Thinner and slightly transparent line
+
+        // Calculate how many positions to draw based on progress
+        const numPositions = positions.length;
+        const targetIndex = Math.min(numPositions - 1, progress * (numPositions - 1));
+        const fullSegments = Math.floor(targetIndex);
+        const partialProgress = targetIndex - fullSegments;
+
+        // Draw full segments
+        for (let i = 0; i <= fullSegments; i++) {
+            const pos = positions[i];
+            if (i === 0) {
+                beam.moveTo(pos.x, pos.y);
+            } else {
+                beam.lineTo(pos.x, pos.y);
+            }
+        }
+
+        // Draw partial segment if needed
+        if (partialProgress > 0 && fullSegments < numPositions - 1) {
+            const currentPos = positions[fullSegments];
+            const nextPos = positions[fullSegments + 1];
+            const partialX = currentPos.x + (nextPos.x - currentPos.x) * partialProgress;
+            const partialY = currentPos.y + (nextPos.y - currentPos.y) * partialProgress;
+            beam.lineTo(partialX, partialY);
+        }
+    };
+
+    // Animate beam extending from 0 to 1
+    const animState = { progress: 0 };
+    let lastDrawnProgress = -1;
+    const extendTween = gsap.to(animState, {
+        progress: 1,
+        duration: 0.15,
+        ease: 'power2.out',
+        onUpdate: () => {
+            // Throttle redraws - only redraw if progress changed significantly
+            if (Math.abs(animState.progress - lastDrawnProgress) > 0.1) {
+                drawBeam(animState.progress);
+                lastDrawnProgress = animState.progress;
+            }
+        },
+        onComplete: () => {
+            // Draw final state
+            drawBeam(1);
+
+            // Fade out smoothly
+            const fadeTween = gsap.to(beam, {
+                alpha: 0,
+                duration: 0.6,
+                ease: 'sine.in',
+                onComplete: () => {
+                    // Kill any remaining tweens
+                    gsap.killTweensOf(beam);
+                    gsap.killTweensOf(animState);
+
+                    // Destroy filters first
+                    if (beam.filters) {
+                        beam.filters.forEach(filter => {
+                            if (filter.destroy) filter.destroy();
+                        });
+                        beam.filters = null;
+                    }
+
+                    // Clear graphics
+                    beam.clear();
+
+                    // Remove and destroy
+                    boardContainer.removeChild(beam);
+                    beam.destroy({ children: true, texture: true, baseTexture: true });
+                }
+            });
+        }
+    });
+}
+
 function onHexHover(hex, index, isOver) {
     if (gameState.gameOver || !hexData[index].isEmpty) return;
 
@@ -1526,33 +1749,47 @@ function onHexHover(hex, index, isOver) {
     const pos = HEX_POSITIONS[index];
 
     if (isOver) {
+        // Check if this is a valid move
+        const isValidMove = hexData[index].hasValidMoveGlow;
+
+        // If a tile is selected but this is not a valid move, show error shake
+        if (tileInventoryManager.selectedTile && !isValidMove) {
+            // INVALID MOVE: Quick rotation shake animation around center axis
+            gsap.killTweensOf(hex);
+            gsap.killTweensOf(hex.scale);
+            gsap.killTweensOf(hex, 'rotation');
+
+            const shakeRotation = 0.1; // Rotation amount in radians (~5.7 degrees)
+            gsap.timeline()
+                .to(hex, { rotation: shakeRotation, duration: 0.05, ease: 'power2.out' })
+                .to(hex, { rotation: -shakeRotation, duration: 0.05, ease: 'power2.inOut' })
+                .to(hex, { rotation: shakeRotation * 0.5, duration: 0.05, ease: 'power2.inOut' })
+                .to(hex, { rotation: 0, duration: 0.05, ease: 'power2.in' });
+
+            return; // Don't apply hover effects
+        }
+
+        // If no tile selected, or not a valid move, don't apply hover effects
+        if (!isValidMove) {
+            return;
+        }
+
+        // VALID MOVE: Apply hover effects
         // Kill breathing animation
         gsap.killTweensOf(hex.scale);
-
-        // Clean hover - scale and glow only
-        gsap.to(hex.scale, {
-            x: 1.1,
-            y: 1.1,
-            duration: 0.25,
-            ease: 'power2.out'
-        });
 
         // Add subtle glow filter - match current player's color
         const glowColor = gameState.currentPlayer === 1 ? COLORS.glow.player1 : COLORS.glow.player2;
 
-        // Only add hover glow if there's no valid move glow
-        // (valid move glow is already pulsing, don't interfere with it)
-        if (!hexData[index].hasValidMoveGlow) {
-            const hoverGlow = new GlowFilter({
-                distance: 10,
-                outerStrength: 1.5,
-                innerStrength: 0.5,
-                color: glowColor,
-                quality: 0.5
+        // Boost the glow on hover
+        if (hexData[index].hasValidMoveGlow && validMoveGlowGraphics[index]) {
+            const glowGraphic = validMoveGlowGraphics[index];
+            gsap.killTweensOf(glowGraphic);
+            gsap.to(glowGraphic, {
+                alpha: 1.0,  // Brighter on hover
+                duration: 0.2,
+                ease: 'power2.out'
             });
-
-            if (!hex.filters) hex.filters = [];
-            hex.filters.push(hoverGlow);
         }
 
         // Redraw with hover color (centered at origin)
@@ -1573,6 +1810,9 @@ function onHexHover(hex, index, isOver) {
         }
         hex.closePath();
         hex.endFill();
+
+        // Reset pivot to (0,0) after redraw (hexagon is centered at origin)
+        hex.pivot.set(0, 0);
 
         // RIPPLE EFFECT - DISABLED (will reactivate later)
         // const neighbors = getNeighbors(index);
@@ -1626,8 +1866,8 @@ function onHexHover(hex, index, isOver) {
         // Particle effects disabled for performance
         // particleManager.startHoverEmitter(hex.hexId, pos.x, pos.y);
 
-        // SHOW TILE PREVIEW if a tile is selected
-        if (tileInventoryManager.selectedTile) {
+        // SHOW TILE PREVIEW if a tile is selected AND this is a valid move
+        if (tileInventoryManager.selectedTile && isValidMove) {
             tilePreviewCursor.show(
                 hex,
                 tileInventoryManager.selectedTile.value,
@@ -1636,20 +1876,20 @@ function onHexHover(hex, index, isOver) {
         }
 
     } else {
-        // Return to normal
-        gsap.to(hex.scale, {
-            x: 1,
-            y: 1,
-            duration: 0.25,
-            ease: 'power2.out'
-        });
-
-        // Only clear filters if there's no valid move glow
-        // (if there is one, we never touched it, so leave it alone)
-        if (!hexData[index].hasValidMoveGlow) {
-            hex.filters = [];
+        // Return to normal - restore glow pulse
+        if (hexData[index].hasValidMoveGlow && validMoveGlowGraphics[index]) {
+            const glowGraphic = validMoveGlowGraphics[index];
+            gsap.killTweensOf(glowGraphic);
+            // Set back to base alpha, then resume pulse
+            glowGraphic.alpha = 0.6;
+            gsap.to(glowGraphic, {
+                alpha: 0.85,
+                duration: 1.2,
+                yoyo: true,
+                repeat: -1,
+                ease: 'sine.inOut'
+            });
         }
-        // else: hex already has its valid move glow filter, don't touch it
 
         // Redraw with normal colors (centered at origin)
         hex.clear();
@@ -1670,10 +1910,13 @@ function onHexHover(hex, index, isOver) {
         hex.closePath();
         hex.endFill();
 
+        // Reset pivot to (0,0) after redraw (hexagon is centered at origin)
+        hex.pivot.set(0, 0);
+
         // Stop particles
         particleManager.stopHoverEmitter(hex.hexId);
 
-        // HIDE TILE PREVIEW
+        // Hide preview when leaving hex
         tilePreviewCursor.hide();
     }
 }
@@ -1745,6 +1988,22 @@ function onHexClick(hex, index) {
     // Place tile with the selected value (instant)
     placeTile(hexId, index, gameState.currentPlayer, selectedTile.value);
 
+    // SCORING LANE RIPPLE: Animate ripple down affected scoring lanes for BOTH players
+    // Player 1 lanes
+    const player1Lanes = getAffectedLanes(hexId, 1);
+    player1Lanes.forEach(lane => {
+        animateScoringLaneRipple(lane, hexId, 1);
+    });
+
+    // Player 2 lanes
+    const player2Lanes = getAffectedLanes(hexId, 2);
+    player2Lanes.forEach(lane => {
+        animateScoringLaneRipple(lane, hexId, 2);
+    });
+
+    // CYBERPUNK FEEDBACK: Trigger 4-edge scan waves in player color
+    flashManager.createPlayerTileScanWaves(gameState.currentPlayer);
+
     // SIMULTANEOUSLY: Vaporize tile from player box with particles and smooth shrink
     tileInventoryManager.vaporizeAndShrink(selectedTile);
 
@@ -1770,7 +2029,16 @@ function placeTile(hexId, index, player, value) {
     gameState.board[hexId] = { player, value };
     hexData[index].isEmpty = false;
     hexData[index].hasValidMoveGlow = false;
-    hexData[index].validMoveGlowFilter = null;
+
+    // Remove glow graphic if it exists
+    if (validMoveGlowGraphics[index]) {
+        gsap.killTweensOf(validMoveGlowGraphics[index]);
+        if (validMoveGlowGraphics[index].parent) {
+            boardContainer.removeChild(validMoveGlowGraphics[index]);
+        }
+        validMoveGlowGraphics[index].destroy({ children: true, texture: true, baseTexture: true });
+        validMoveGlowGraphics[index] = null;
+    }
 
     // Stop hover effects
     particleManager.stopHoverEmitter(hexId);
@@ -1803,6 +2071,11 @@ function placeTile(hexId, index, player, value) {
 
     hex.clear();
 
+    // Ensure position and pivot are correct
+    hex.x = pos.x;
+    hex.y = pos.y;
+    hex.pivot.set(0, 0);
+
     // Consistent edge width for all tiles
     const edgeWidth = 4;
     const edgeAlpha = 1;
@@ -1831,7 +2104,7 @@ function placeTile(hexId, index, player, value) {
         outerStrength: player === 0 ? 2 : 1.5,
         innerStrength: player === 0 ? 1 : 0.8,
         color: glowColor,
-        quality: 0.5
+        quality: 1.0  // Maximum quality for symmetric distribution
     });
     hex.filters = [glow];
 
@@ -1854,7 +2127,7 @@ function placeTile(hexId, index, player, value) {
         outerStrength: 1.5,
         innerStrength: 0.5,
         color: 0x1a2f43,  // Even darker navy-grey for depth
-        quality: 0.4
+        quality: 1.0  // Maximum quality for symmetric distribution
     });
     text.filters = [textGlow];
 
