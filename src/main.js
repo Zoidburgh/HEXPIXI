@@ -91,7 +91,8 @@ let gameState = {
     currentPlayer: 1,
     scores: { p1: 0, p2: 0 },
     gameOver: false,
-    wasmEngine: null
+    wasmEngine: null,
+    showTitleScreen: true // Toggle to show/hide title screen for development
 };
 
 // ============================================================================
@@ -124,6 +125,22 @@ console.log('Screen dimensions:', app.screen.width, 'x', app.screen.height);
 // ============================================================================
 // CONTAINERS
 // ============================================================================
+
+// BREATHING BACKGROUND: Subtle pulsing luminosity for atmospheric aliveness
+const backgroundGraphics = new PIXI.Graphics();
+backgroundGraphics.beginFill(COLORS.background);
+backgroundGraphics.drawRect(0, 0, app.screen.width, app.screen.height);
+backgroundGraphics.endFill();
+app.stage.addChild(backgroundGraphics); // Add first (renders behind everything)
+
+// Breathing animation: 20% brightness variation over 9 seconds
+gsap.to(backgroundGraphics, {
+    alpha: 0.80, // 20% dimmer for very strong pulse
+    duration: 9,
+    ease: 'sine.inOut', // Smooth, organic breathing
+    yoyo: true, // Ping-pong effect
+    repeat: -1 // Infinite loop
+});
 
 // Flash container for grid line flashes (renders BEHIND board)
 const flashContainer = new PIXI.Container();
@@ -158,6 +175,167 @@ const fpsText = new PIXI.Text('FPS: 60', {
 fpsText.x = app.screen.width - 80;
 fpsText.y = app.screen.height - 30;
 app.stage.addChild(fpsText);
+
+// ============================================================================
+// TITLE SCREEN - Glitch Cyberpunk Style
+// ============================================================================
+
+const titleScreenContainer = new PIXI.Container();
+titleScreenContainer.visible = gameState.showTitleScreen;
+titleScreenContainer.alpha = 0; // Start invisible until font loads
+app.stage.addChild(titleScreenContainer);
+
+// Preload title font to prevent FOUT (Flash of Unstyled Text)
+document.fonts.load('700 160px Saira').then(() => {
+    console.log('✓ Title font loaded');
+    // Fade in title screen once font is ready
+    if (gameState.showTitleScreen) {
+        gsap.to(titleScreenContainer, {
+            alpha: 1,
+            duration: 0.3,
+            ease: 'power2.out'
+        });
+    }
+}).catch(() => {
+    console.warn('⚠️ Title font loading failed, showing anyway');
+    // Show title even if font fails to load
+    if (gameState.showTitleScreen) {
+        titleScreenContainer.alpha = 1;
+    }
+});
+
+if (gameState.showTitleScreen) {
+    // Dark overlay background
+    const titleOverlay = new PIXI.Graphics();
+    titleOverlay.beginFill(0x000000, 0.7);
+    titleOverlay.drawRect(0, 0, app.screen.width, app.screen.height);
+    titleOverlay.endFill();
+    titleScreenContainer.addChild(titleOverlay);
+
+    // HEXUKI Title Text - Classy minimal with thin dual accent
+    const titleText = new PIXI.Text('HEXUKI', {
+        fontFamily: 'Saira',
+        fontSize: 160,
+        fill: 0xFFD700, // Bright gold/yellow fill
+        fontWeight: '700',
+        letterSpacing: 12,
+        stroke: 0xff006e, // Magenta accent stroke
+        strokeThickness: 6 // Thicker for better visibility
+    });
+    titleText.anchor.set(0.5);
+    titleText.x = app.screen.width / 2;
+    titleText.y = app.screen.height / 2 - 100;
+
+    // Single subtle cyan glow for sophistication
+    const subtleGlow = new GlowFilter({
+        distance: 10,
+        outerStrength: 1.5,
+        innerStrength: 0.5,
+        color: 0x00d9ff, // Subtle cyan accent
+        quality: 0.3 // Softer appearance
+    });
+
+    titleText.filters = [subtleGlow];
+    titleScreenContainer.addChild(titleText);
+
+    // PLAY BUTTON - Hexagon shaped
+    const playButtonContainer = new PIXI.Container();
+    playButtonContainer.x = app.screen.width / 2;
+    playButtonContainer.y = app.screen.height / 2 + 80;
+    titleScreenContainer.addChild(playButtonContainer);
+
+    // Create hexagon button
+    const playButton = new PIXI.Graphics();
+    const hexSize = 80;
+    playButton.lineStyle(4, 0xFFD700, 1);
+    playButton.beginFill(0xB8860B, 0.3); // Dark gold with transparency
+
+    // Draw flat-top hexagon
+    for (let i = 0; i < 6; i++) {
+        const angle = (Math.PI / 3) * i;
+        const px = hexSize * Math.cos(angle);
+        const py = hexSize * Math.sin(angle);
+
+        if (i === 0) {
+            playButton.moveTo(px, py);
+        } else {
+            playButton.lineTo(px, py);
+        }
+    }
+    playButton.closePath();
+    playButton.endFill();
+
+    // Add glow to button
+    const buttonGlow = new GlowFilter({
+        distance: 15,
+        outerStrength: 2,
+        innerStrength: 0.5,
+        color: 0xFFD700,
+        quality: 0.4
+    });
+    playButton.filters = [buttonGlow];
+
+    playButtonContainer.addChild(playButton);
+
+    // PLAY text
+    const playText = new PIXI.Text('PLAY', {
+        fontFamily: 'Saira',
+        fontSize: 32,
+        fill: 0xFFD700,
+        fontWeight: '700'
+    });
+    playText.anchor.set(0.5);
+    playButtonContainer.addChild(playText);
+
+    // Make button interactive
+    playButtonContainer.eventMode = 'static';
+    playButtonContainer.cursor = 'pointer';
+
+    // Hover effects
+    playButtonContainer.on('pointerover', () => {
+        gsap.to(playButtonContainer.scale, {
+            x: 1.1,
+            y: 1.1,
+            duration: 0.2,
+            ease: 'power2.out'
+        });
+        buttonGlow.outerStrength = 3;
+    });
+
+    playButtonContainer.on('pointerout', () => {
+        gsap.to(playButtonContainer.scale, {
+            x: 1,
+            y: 1,
+            duration: 0.2,
+            ease: 'power2.out'
+        });
+        buttonGlow.outerStrength = 2;
+    });
+
+    // Click handler - Hide title screen
+    playButtonContainer.on('pointerdown', () => {
+        console.log('🎮 Starting game...');
+        gsap.to(titleScreenContainer, {
+            alpha: 0,
+            duration: 0.5,
+            ease: 'power2.inOut',
+            onComplete: () => {
+                titleScreenContainer.visible = false;
+                gameState.showTitleScreen = false;
+            }
+        });
+    });
+
+    // Subtle pulse animation on button
+    gsap.to(playButtonContainer.scale, {
+        x: 1.05,
+        y: 1.05,
+        duration: 1.5,
+        repeat: -1,
+        yoyo: true,
+        ease: 'sine.inOut'
+    });
+}
 
 let lastTime = performance.now();
 let frames = 0;
@@ -925,7 +1103,7 @@ const tileInventoryManager = {
     },
 
     // Create and display tiles as a curved continuous bar
-    displayTiles(player, tileValues) {
+    displayTiles(player, tileValues, animate = false) {
         const isPlayer1 = player === 1;
         const tiles = isPlayer1 ? this.player1Tiles : this.player2Tiles;
 
@@ -1073,6 +1251,52 @@ const tileInventoryManager = {
             this.player1Bar = barContainer;
         } else {
             this.player2Bar = barContainer;
+        }
+
+        // ENTRANCE ANIMATION: Slide + fade from sides (satisfying & quick!)
+        if (animate) {
+            // Start state: invisible and offset to the side
+            barContainer.alpha = 0;
+            const offsetDistance = 150;
+            const originalX = centerX;
+            barContainer.x = isPlayer1 ? centerX - offsetDistance : centerX + offsetDistance;
+
+            // Animate: slide to final position while fading in
+            gsap.to(barContainer, {
+                x: originalX,
+                alpha: 1,
+                duration: 0.5,
+                ease: 'power2.out',
+                delay: 0 // Can add delay when called from init
+            });
+
+            // SEGMENT STAGGER: Individual segments scale/fade for extra polish
+            const segments = barContainer.children;
+            segments.forEach((segment, index) => {
+                // Start each segment slightly smaller and invisible
+                segment.alpha = 0;
+                segment.scale.set(0.85);
+
+                // Stagger the reveal
+                gsap.to(segment, {
+                    alpha: 1,
+                    duration: 0.3,
+                    delay: 0.1 + (index * 0.025), // 25ms stagger
+                    ease: 'power2.out'
+                });
+
+                gsap.to(segment.scale, {
+                    x: 1,
+                    y: 1,
+                    duration: 0.3,
+                    delay: 0.1 + (index * 0.025),
+                    ease: 'back.out(1.5)' // Subtle bounce like board hexes
+                });
+            });
+        } else {
+            // No animation - instant display for rebuilds after tile placement
+            barContainer.alpha = 1;
+            barContainer.x = centerX;
         }
 
         console.log(`🎲 Displayed ${sortedTileValues.length} tiles for Player ${player} as curved bar (lowest to highest)`);
@@ -2457,9 +2681,9 @@ async function init() {
             });
         }, 1600); // Wait for board glitch animation to finish
 
-        // Display player tiles from WASM engine
-        tileInventoryManager.displayTiles(1, engineState.player1Tiles);
-        tileInventoryManager.displayTiles(2, engineState.player2Tiles);
+        // Display player tiles from WASM engine with entrance animation
+        tileInventoryManager.displayTiles(1, engineState.player1Tiles, true);
+        tileInventoryManager.displayTiles(2, engineState.player2Tiles, true);
         tileInventoryManager.updateOpacity();
 
         // Highlight valid hexes for the starting player (passive glow)
